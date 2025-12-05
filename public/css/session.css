@@ -1,0 +1,18 @@
+    body { margin: 0; font-family: Arial, sans-serif; background: #e6eef5; height: 100vh; }
+    .container { display: flex; height: 95vh; margin: 2.5vh; gap: 10px; }
+
+    /* LEFT: Game Area */
+    .game-area { flex: 1; display: flex; flex-direction: column; background: #fff; border-radius: 10px; padding: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+    .session-banner { position: sticky; top: 0; background: #007bff; color: #fff; padding: 10px; border-radius: 5px; font-weight: bold; text-align: center; margin-bottom: 10px; cursor: pointer; }
+    .system-messages { flex: 1; overflow-y: auto; border: 1px solid #ccc; padding: 10px; border-radius: 6px; margin-bottom: 15px; }
+    .question-inputs { display: flex; gap: 10px; margin-bottom: 10px; }
+    .question-inputs input { flex: 1; padding: 8px; border-radius: 5px; border: 1px solid #ccc; }
+    #startGameBtn { padding: 10px; font-size: 16px; background: #28a745; color: #fff; border: none; border-radius: 6px; cursor: pointer; }
+
+    /* RIGHT: Sidebar */
+    .sidebar { width: 300px; display: flex; flex-direction: column; background: #fff; border-radius: 10px; padding: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+    .leaderboard { margin-bottom: 10px; }
+    .chat-messages { flex: 1; overflow-y: auto; border: 1px solid #ccc; padding: 10px; border-radius: 6px; margin-bottom: 10px; }
+    .chat-input { display: flex; gap: 5px; }
+    .chat-input input { flex: 1; padding: 8px; border-radius: 5px; border: 1px solid #ccc; }
+    .chat-input button { padding: 8px 10px; border-radius: 5px; border: none; background: #007bff; color: #fff; cursor: pointer; }

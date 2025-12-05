@@ -1,0 +1,77 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Guess the Answer</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+      background: #e6eef5;
+    }
+    h1 {
+      font-size: 3rem;
+      font-weight: bold;
+    }
+  </style>
+    <script defer src="https://cdn.socket.io/4.7.2/socket.io.min.js" defer></script>
+    
+    <script src="/js/index.js" type="module" defer></script>
+</head>
+<body>
+  <div style="text-align:center; color:#042c4f">
+    <h1><b>Guess the answer</b></h1>
+
+    <div style="margin-top:40px; background:#ffffff; padding:30px; width:550px; height: 200px; margin:auto; border-radius:12px; box-shadow:0 4px 10px rgba(0,0,0,0.1);">
+      <input 
+        id="nameInput"
+        type="text" 
+        placeholder="Enter Name" 
+        style="width:50%; padding:12px; font-size:1rem; border-radius:8px; border:1px solid #ccc; margin-bottom:70px;"
+      />
+
+      <div style="display:flex; justify-content:space-between; gap:15px;">
+        <button id="createSessionBtn" style="flex:1;  padding:12px; font-size:1rem; border:none; border-radius:8px; cursor:pointer; background:#007bff; color:white; font-weight:bold;">
+          Create a session
+        </button>
+
+        <button id="joinSessionBtn" style="flex:1; padding:12px; font-size:1rem; border:none; border-radius:8px; cursor:pointer; background:#28a745; color:white; font-weight:bold;">
+          Join a session
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal -->
+  <div id="sessionModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); justify-content:center; align-items:center;">
+    <div style="background:white; padding:25px; width:300px; border-radius:10px; text-align:center;">
+      <h3>Enter Session ID</h3>
+      <input type="text" id="sessionIdInput" placeholder="Session ID" style="width:100%; padding:10px; border-radius:8px; border:1px solid #ccc; margin-top:10px;">
+      <div style="margin-top:20px; display:flex; gap:10px;">
+        <button id="confirmJoin" style="flex:1; padding:10px; background:#28a745; color:white; border:none; border-radius:8px; cursor:pointer;">Join</button>
+        <button id="closeModal" style="flex:1; padding:10px; background:#dc3545; color:white; border:none; border-radius:8px; cursor:pointer;">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const joinBtn = document.getElementById('joinSessionBtn');
+    const modal = document.getElementById('sessionModal');
+    const closeModal = document.getElementById('closeModal');
+
+    joinBtn.onclick = () => {
+      modal.style.display = 'flex';
+    };
+
+    closeModal.onclick = () => {
+      modal.style.display = 'none';
+    };
+  </script>
+</body>
+</html>
