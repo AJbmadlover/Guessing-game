@@ -23,8 +23,9 @@ function broadcastSessionState(io, sessionId) {
     connectedPlayers,
     connectedPlayersCount: connectedPlayers.length,
     inProgress: session.inProgress,
-    currentQuestionIndex: session.currentQuestionIndex,
-    totalQuestions: session.questions.length
+    hasActiveQuestion: !!session.currentQuestion,
+    questionText: session.currentQuestion?.questionText || null,
+    questionDuration: session.currentQuestion?.duration || null
   });
 }
 
@@ -63,7 +64,46 @@ function assignNextMaster(io, sessionId, winnerPlayerId = null) {
 
   broadcastSessionState(io, sessionId);
 }
+// ------------------------
+// Await master TimeOut 
+// ------------------------
+function startAwaitingMasterTimeout(io, sessionId, timeoutMs = 60000) { //wait for 1 minute 
+  const session = sessions[sessionId];
+  if (!session) return;
 
+  // Clear previous timeout if any
+  if (session.awaitTimeout) clearTimeout(session.awaitTimeout);
+
+  session.awaitTimeout = setTimeout(() => {
+    const players = playersDetails[sessionId] || [];
+    const currentMaster = players.find(p => p.role === 'master');
+
+    const stillConnected = currentMaster?.connected;
+
+    if (!stillConnected) {
+      io.to(sessionId).emit("round:skipped_master", {
+        message: `Master (${currentMaster?.name}) is inactive. Rotating master...`
+      });
+
+      assignNextMaster(io, sessionId, null);
+
+      io.to(sessionId).emit("round:awaiting_question", {
+        nextMaster: players.find(p => p.role === "master")?.name
+      });
+    } else {
+      io.to(sessionId).emit("round:timeout_warning", {
+        message: `Master inactive. Passing turn...`
+      });
+
+      assignNextMaster(io, sessionId, null);
+
+      io.to(sessionId).emit("round:awaiting_question", {
+        nextMaster: players.find(p => p.role === "master")?.name
+      });
+    }
+
+  }, timeoutMs);
+}
 
 // ------------------------
 // Compute session winner
@@ -94,43 +134,43 @@ function endSession(io, sessionId) {
 }
 
 // ------------------------
-// Send next question
+// Start question
 // ------------------------
-function sendNextQuestion(io, sessionId) {
+function startQuestion(io, sessionId) {
   const session = sessions[sessionId];
-  if (!session) return;
-
   const players = playersDetails[sessionId];
+  const question = session?.currentQuestion;
 
-  if (session.currentQuestionIndex >= session.questions.length) {
-    io.to(sessionId).emit('message:new', {type:"system", text:"waiting for next master to start a new game", timestamp: new Date()});
-    return;
+  if (!session || !players || !question) return; // defensive
+
+  // clear any existing timer
+  if (session.timer) {
+    clearTimeout(session.timer);
+    session.timer = null;
   }
 
-  const question = session.questions[session.currentQuestionIndex];
+  // Reset round states
   players.forEach(p => {
     p.attemptsLeft = 3;
     p.guessedCorrectly = false;
   });
 
   session.winner = null;
+  session.questionEnded = false;
 
   io.to(sessionId).emit('game:question', {
     question: question.questionText,
-    questionIndex: session.currentQuestionIndex + 1,
-    totalQuestions: session.questions.length,
-    duration :question.duration || session.questionDuration ,
-    players, 
-
+    duration: question.duration,
+    players
   });
 
   broadcastSessionState(io, sessionId);
 
+  // Timer
   session.timer = setTimeout(() => {
     endCurrentQuestion(io, sessionId, null);
-}, (question.duration || session.questionDuration) * 1000);
+  }, question.duration * 1000);
 }
-
 
 // ------------------------
 // Handle next question out of a set of questions
@@ -139,25 +179,45 @@ function sendNextQuestion(io, sessionId) {
 function endCurrentQuestion(io, sessionId, winnerPlayer = null) {
   const session = sessions[sessionId];
   if (!session) return;
-  const question = session.questions[session.currentQuestionIndex];
-  const players = playersDetails[sessionId];
 
-    if (session.questionEnded) return;
-    session.questionEnded = true;
+  const players = playersDetails[sessionId];
+  const question = session?.currentQuestion;
+
+  if (!session || !players) return;
+  if (session.questionEnded) return;
+
+  // clear timer if any
+  if (session.timer) {
+    clearTimeout(session.timer);
+    session.timer = null;
+  }
+
+  session.questionEnded = true;
 
   io.to(sessionId).emit('question:ended', {
     winner: winnerPlayer?.name || null,
-    answer: question.answer,
+    answer: question?.answer || null,
     players,
     message: winnerPlayer ? `${winnerPlayer.name} won this round!` : "Time out! No winner this round."
   });
+  
 
   broadcastSessionState(io, sessionId);
 
+  // assign next master based on winner
+    assignNextMaster(io, sessionId, winnerPlayer?.id);
 
-  session.currentQuestionIndex++;
-  assignNextMaster(io, sessionId, winnerPlayer?.userId); // winner becomes next master
-  setTimeout(() => sendNextQuestion(io, sessionId), 4000);
+    // clear active question
+    session.currentQuestion = null;
+    session.inProgress = false;
+
+    // notify master to add next question
+  io.to(sessionId).emit('round:awaiting_question', {
+    nextMaster: winnerPlayer?.name || "No winner — master rotated",
+    message: "Waiting for next master to submit the next question."
+  });
+  // start inactivity timeout
+startAwaitingMasterTimeout(io, sessionId, 60000); // 1 minute
 
 }
 
@@ -247,7 +307,8 @@ function socketHandler(io) {
         timer: null,
         winner: null,
         startTime: new Date(),
-        questionDuration: 60
+        questionDuration: 60,
+        awaitTimeout: null,
       };
 
       playersDetails[sessionId] = [{
@@ -342,11 +403,15 @@ function socketHandler(io) {
     // ------------------------
     // Add questions
     // ------------------------
-    socket.on('add_questions', ({ sessionId, questions }) => {
+    socket.on('start_question', ({ sessionId, question }) => {
       const players = playersDetails[sessionId];
       if (!players) return;
       // Find the current master from session
         const session = sessions[sessionId];
+        if (session.awaitTimeout) {
+          clearTimeout(session.awaitTimeout);
+          session.awaitTimeout = null;
+        }
         const currentMaster = players.find(p => p.role === 'master');
 
         if (!currentMaster || currentMaster.userId !== socket.userId) {
@@ -354,19 +419,34 @@ function socketHandler(io) {
           return;
         }
 
-        // Append new questions instead of replacing
-        session.questions.push(...questions.map(q => ({
-          questionText: q.questionText,
-          answer: q.answer,
-          duration: q.duration || 60
-        })));
+        const qObj = Array.isArray(question) ? question[0] : question;
+        if (!qObj || !qObj.questionText || !qObj.answer) {
+          socket.emit('message:error', { text: 'Invalid question payload.' });
+          return;
+        }
 
-      io.to(sessionId).emit('message:added_questions', {
+        if (session.timer) {
+          clearTimeout(session.timer);
+          session.timer = null;
+        }
+
+      session.currentQuestion = {
+        questionText: qObj.questionText,
+        answer: qObj.answer,
+        duration: qObj.duration || session.questionDuration || 60
+      };
+
+      session.inProgress = true;
+      session.winner = null;
+      session.questionEnded = false;
+
+      io.to(sessionId).emit('message:new', {
         type: 'system',
-        text: `${questions.length} questions added by master.`,
+        text: `Master added a question.`,
         timestamp: new Date()
       });
 
+      startQuestion(io, sessionId);
       broadcastSessionState(io, sessionId);
     });
 
@@ -382,20 +462,22 @@ function socketHandler(io) {
         socket.emit('message:new', { type: 'system', text: 'Need at least 1 master and 2 players to start.', timestamp: new Date() });
         return;
       }
-      if (!session.questions || session.questions.length === 0) {
-        socket.emit('message:new', {
-          type: 'system',
-          text: 'Add at least one question before starting the game.',
-          timestamp: new Date()
-        });
-        return;
-      }
+      // game starts but waits for master to submit the first question
+      session.inProgress = false;
+      session.currentQuestion = null;
+      session.winner = null;
+      session.questionEnded = false;
+
+      io.to(sessionId).emit('message:new', {
+        type: 'system',
+        text: 'Game started. Waiting for Master to submit a question.',
+        timestamp: new Date()
+      });
+
       console.log("Questions:", sessions[sessionId].questions);
 
-      session.inProgress = true;
-      session.currentQuestionIndex = 0;
       broadcastSessionState(io, sessionId);
-      sendNextQuestion(io, sessionId);
+      // startQuestion(io, sessionId);
     });
 
     // ------------------------
@@ -409,7 +491,8 @@ function socketHandler(io) {
       const player = players.find(p => p.id === socket.id);
       if (!player || player.attemptsLeft <= 0 || session.winner) return;
 
-      const currentQuestion = session.questions[session.currentQuestionIndex];
+     const currentQuestion = session.currentQuestion;
+
       if (!currentQuestion) return;
 
       if (guess.trim().toLowerCase() === currentQuestion.answer.toLowerCase()) {
@@ -458,3 +541,4 @@ function socketHandler(io) {
 }
 
 module.exports = socketHandler;
+

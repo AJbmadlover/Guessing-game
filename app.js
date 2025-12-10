@@ -1,8 +1,6 @@
 const dotenv = require('dotenv');
 dotenv.config();
-
 const express = require('express');
-const connectDB = require('./config/db');
 const PORT = process.env.PORT || 4000;
 const path = require('path');
 const http = require('http');
@@ -13,10 +11,9 @@ const server = http.createServer(app);
 const io = new Server(server);
 const socketHandler = require('./socketHandler');
 
-// Connect to MongoDB
-connectDB();
 // Use the socket handler
 socketHandler(io);
+
 // Middleware to parse JSON requests
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
